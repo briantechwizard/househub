@@ -1,16 +1,17 @@
 <?php
-session_start();
+include('db.php'); // db.php already starts the session and connects to MySQL
 include('lang.php');
-include('db.php'); // make sure db.php connects to your database
 $lang = $_SESSION['language'] ?? 'en';
 
-// Include PHPMailer
+// Include PHPMailer using relative paths (works on both Windows and Linux/Render)
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/Exception.php';
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/PHPMailer.php';
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/SMTP.php';
+require __DIR__ . '/PHPMailer-7.1.1/src/Exception.php';
+require __DIR__ . '/PHPMailer-7.1.1/src/PHPMailer.php';
+require __DIR__ . '/PHPMailer-7.1.1/src/SMTP.php';
+
+$statusMessage = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $name    = $_POST['name'] ?? '';
@@ -22,17 +23,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         try {
             // SMTP settings
             $mail->isSMTP();
-            $mail->Host = 'smtp.gmail.com';
-            $mail->SMTPAuth = true;
-            $mail->Username = 'househubke254@gmail.com'; // your site Gmail
-            $mail->Password = 'ucfj btvy ysga duqc';       // Gmail App Password
-            $mail->SMTPSecure = 'tls';
-            $mail->Port = 587;
+            $mail->Host       = 'smtp.gmail.com';
+            $mail->SMTPAuth   = true;
+            $mail->Username   = 'househubke254@gmail.com';
+            $mail->Password   = getenv('SMTP_PASS') ?: 'ucfj btvy ysga duqc';
+            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Port       = 587;
 
             // Email content
             $mail->setFrom('househubke254@gmail.com', 'HouseHubKe Contact Form');
-            $mail->addAddress('househubke254@gmail.com'); // site inbox
-            $mail->addReplyTo($email, $name); // user’s email for replies
+            $mail->addAddress('househubke254@gmail.com');
+            $mail->addReplyTo($email, $name);
             $mail->Subject = 'New Contact Us Message';
             $mail->Body    = "Name: $name\nEmail: $email\n\nMessage:\n$message";
 
@@ -44,12 +45,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->execute();
             $stmt->close();
 
-            echo "<p style='color:green;text-align:center;'>Your message has been sent successfully!</p>";
+            $statusMessage = "<p style='color:green;text-align:center;margin-bottom:15px;'>Your message has been sent successfully!</p>";
         } catch (Exception $e) {
-            echo "<p style='color:red;text-align:center;'>Failed to send message: {$mail->ErrorInfo}</p>";
+            $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Failed to send message: {$mail->ErrorInfo}</p>";
         }
     } else {
-        echo "<p style='color:red;text-align:center;'>Please fill in all fields.</p>";
+        $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Please fill in all fields.</p>";
     }
 }
 ?>
@@ -115,6 +116,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <section class="form-section">
         <h2><?= $translations[$lang]['contact_us_page'] ?></h2>
+        <?= $statusMessage ?>
         <form class="form-box" method="post" autocomplete="off">
             <label for="name"><?= $translations[$lang]['your_name'] ?></label>
             <input type="text" id="name" name="name" placeholder="Enter your name" required>
@@ -127,7 +129,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             <button type="submit" class="glow-btn"><?= $translations[$lang]['send_message'] ?></button>
         </form>
-        
     </section>
 
     <?php include('footer.php'); ?>

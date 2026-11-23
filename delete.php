@@ -1,7 +1,6 @@
 <?php
-// Include database connection
+// Include database connection (db.php already starts the session safely)
 include('db.php');
-session_start(); // ensure session is started to access $_SESSION['user_id']
 
 if (isset($_GET['id'])) {
     $id = intval($_GET['id']); // sanitize input
@@ -19,29 +18,35 @@ if (isset($_GET['id'])) {
     }
 
     // Only allow deletion if current user owns the house
-    if ($house['user_id'] != $_SESSION['user_id']) {
+    if (!isset($_SESSION['user_id']) || $house['user_id'] != $_SESSION['user_id']) {
         die("Unauthorized action.");
     }
 
-    // ✅ Absolute path to uploads folder
-    $uploadDir = realpath(__DIR__ . "/uploads") . DIRECTORY_SEPARATOR;
+    // Path to uploads folder (works on both Windows and Linux/Render)
+    $uploadDir = __DIR__ . DIRECTORY_SEPARATOR . "uploads" . DIRECTORY_SEPARATOR;
 
     // Delete images
     if (!empty($house['image'])) {
-        $images = explode(',', $house['image']); // handle multiple images
+        $images = explode(',', $house['image']);
         foreach ($images as $img) {
-            $filePath = $uploadDir . basename(trim($img));
-            if (file_exists($filePath)) {
-                unlink($filePath);
+            $cleanName = basename(trim($img));
+            if ($cleanName !== '') {
+                $filePath = $uploadDir . $cleanName;
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
             }
         }
     }
 
     // Delete video
     if (!empty($house['video'])) {
-        $videoPath = $uploadDir . basename(trim($house['video']));
-        if (file_exists($videoPath)) {
-            unlink($videoPath);
+        $cleanVideo = basename(trim($house['video']));
+        if ($cleanVideo !== '') {
+            $videoPath = $uploadDir . $cleanVideo;
+            if (file_exists($videoPath)) {
+                unlink($videoPath);
+            }
         }
     }
 

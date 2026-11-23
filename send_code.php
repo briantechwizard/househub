@@ -4,13 +4,6 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require __DIR__ . '/PHPMailer-7.1.1/src/Exception.php';
-require __DIR__ . '/PHPMailer-7.1.1/src/PHPMailer.php';
-require __DIR__ . '/PHPMailer-7.1.1/src/SMTP.php';
-
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = trim($_POST['email'] ?? '');
 
@@ -21,26 +14,25 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $stmt->store_result();
 
     if ($stmt->num_rows > 0) {
-        // Generate 6-digit verification code
         $code = rand(100000, 999999);
         $_SESSION['reset_email'] = $email;
         $_SESSION['reset_code'] = $code;
 
-        // Read BREVO_API_KEY from all possible PHP/Apache sources
         $brevoApiKey = getenv('BREVO_API_KEY') ?: ($_ENV['BREVO_API_KEY'] ?? ($_SERVER['BREVO_API_KEY'] ?? ''));
-        $emailSent = false;
-        $errorMsg = '';
 
-        if (!empty($brevoApiKey)) {
-            // Fast HTTPS API send via Brevo (works on Render without SMTP port blocks)
+        if (empty($brevoApiKey)) {
+            echo "<p style='color:red;text-align:center;'>Server configuration error: BREVO_API_KEY is missing in Render Environment.</p>";
+        } else {
+            $apiUrl = 'https://' . '://brevo.com' . '/v3/smtp/email';
+
             $payload = json_encode([
                 'sender' => ['name' => 'HouseHubKe', 'email' => 'househubke254@gmail.com'],
                 'to' => [['email' => $email]],
                 'subject' => 'HouseHubKe Password Reset Code',
-                'textContent' => "Your verification code is: $code"
+                'textContent' => "Your HouseHubKe verification code is: $code"
             ]);
 
-            $ch = curl_init('https://brevo.com');
+            $ch = curl_init($apiUrl);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -57,40 +49,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_close($ch);
 
             if ($httpCode >= 200 && $httpCode < 300) {
-                $emailSent = true;
+                echo "<p style='color:green;text-align:center;'>Verification code sent to your email!</p>";
+                echo "<p style='text-align:center;'><a href='verify_code.php'>Go to Verify Code Page</a></p>";
             } else {
-                $errorMsg = $curlErr ?: $response;
+                echo "<p style='color:red;text-align:center;'>Brevo Error ($httpCode): " . htmlspecialchars($curlErr ?: $response) . "</p>";
             }
-        } else {
-            // Fallback to PHPMailer for local XAMPP testing
-            $mail = new PHPMailer(true);
-            try {
-                $mail->isSMTP();
-                $mail->Timeout = 10;
-                $mail->Host = '://gmail.com';
-                $mail->SMTPAuth = true;
-                $mail->Username = 'househubke254@gmail.com';
-                $mail->Password = getenv('SMTP_PASS') ?: 'ucfj btvy ysga duqc';
-                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-                $mail->Port = 587;
-
-                $mail->setFrom('househubke254@gmail.com', 'HouseHubKe');
-                $mail->addAddress($email);
-                $mail->Subject = 'HouseHubKe Password Reset Code';
-                $mail->Body    = "Your verification code is: $code";
-
-                $mail->send();
-                $emailSent = true;
-            } catch (Exception $e) {
-                $errorMsg = $mail->ErrorInfo;
-            }
-        }
-
-        if ($emailSent) {
-            echo "<p style='color:green;text-align:center;'>Verification code sent to your email.</p>";
-            echo "<p style='text-align:center;'><a href='verify_code.php'>Go to Verify Code Page</a></p>";
-        } else {
-            echo "<p style='color:red;text-align:center;'>Message could not be sent: " . htmlspecialchars($errorMsg) . "</p>";
         }
     } else {
         echo "<p style='color:red;text-align:center;'>No account found with that email.</p>";

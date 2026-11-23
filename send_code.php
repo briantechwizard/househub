@@ -61,7 +61,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $errorMsg = $curlErr ?: $response;
             }
         } else {
-            // Fallback to PHPMailer for local XAMPP testing (with 10-second timeout)
+            // Fallback to PHPMailer for local XAMPP testing
             $mail = new PHPMailer(true);
             try {
                 $mail->isSMTP();

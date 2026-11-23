@@ -3,9 +3,16 @@ include('db.php');
 include('lang.php');
 $lang = $_SESSION['language'] ?? 'en';
 
+// Ensure user is logged in before posting or editing
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
 $editMode = false;
 $house = null;
 $id = null;
+$errorMessage = '';
 
 // Check if editing
 if (isset($_GET['edit'])) {
@@ -24,67 +31,75 @@ if (isset($_GET['edit'])) {
     }
 }
 
-// Handle form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $name     = $_POST['name'];
-    $title    = $_POST['title'];
-    $price    = $_POST['price'];
-    $phone    = $_POST['phone'];
-    $location = $_POST['location'];
+// Detect if POST exceeded server limit (empty $_POST when Content-Length > 0)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+    $errorMessage = "<p style='color:red;text-align:center;'>Uploaded files are too large. Maximum total upload size is 100MB.</p>";
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $name     = trim($_POST['name'] ?? '');
+    $title    = trim($_POST['title'] ?? '');
+    $price    = intval($_POST['price'] ?? 0);
+    $phone    = trim($_POST['phone'] ?? '');
+    $location = trim($_POST['location'] ?? '');
 
     $targetDir = "uploads/";
-    if (!is_dir($targetDir)) mkdir($targetDir, 0777, true);
+    $fullUploadDir = __DIR__ . "/uploads/";
+    if (!is_dir($fullUploadDir)) {
+        mkdir($fullUploadDir, 0775, true);
+    }
 
     // Handle multiple image uploads
     $imagePaths = [];
     if (!empty($_FILES['photos']['name'][0])) {
         foreach ($_FILES['photos']['name'] as $key => $filename) {
-            if (!empty($filename)) {
-                $uniqueName = time() . "_" . basename($filename);
-                $path = $targetDir . $uniqueName;
-                if (move_uploaded_file($_FILES['photos']['tmp_name'][$key], $path)) {
-                    $imagePaths[] = $path;
+            if (!empty($filename) && $_FILES['photos']['error'][$key] === UPLOAD_ERR_OK) {
+                $cleanName = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($filename));
+                $uniqueName = time() . "_" . $key . "_" . $cleanName;
+                if (move_uploaded_file($_FILES['photos']['tmp_name'][$key], $fullUploadDir . $uniqueName)) {
+                    $imagePaths[] = $targetDir . $uniqueName;
                 }
             }
         }
     }
     $images = !empty($imagePaths) ? implode(',', $imagePaths) : ($house['image'] ?? "");
 
-    // Handle video upload
+    // Handle video upload (max 100MB on Render)
     $video = $house['video'] ?? "";
     if (!empty($_FILES['videos']['name'][0])) {
-        $videoSize = $_FILES['videos']['size'][0];
-        if ($videoSize <= 1024 * 1024 * 1024) {
-            $uniqueVideo = time() . "_" . basename($_FILES['videos']['name'][0]);
-            $videoPath = $targetDir . $uniqueVideo;
-            if (move_uploaded_file($_FILES['videos']['tmp_name'][0], $videoPath)) {
-                $video = $videoPath;
+        if ($_FILES['videos']['error'][0] === UPLOAD_ERR_OK) {
+            $videoSize = $_FILES['videos']['size'][0];
+            if ($videoSize <= 100 * 1024 * 1024) {
+                $cleanVid = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($_FILES['videos']['name'][0]));
+                $uniqueVideo = time() . "_" . $cleanVid;
+                if (move_uploaded_file($_FILES['videos']['tmp_name'][0], $fullUploadDir . $uniqueVideo)) {
+                    $video = $targetDir . $uniqueVideo;
+                }
+            } else {
+                $errorMessage = "<p style='color:red;text-align:center;'>Video exceeds 100MB limit.</p>";
             }
         } else {
-            echo "<p style='color:red;text-align:center;'>".$translations[$lang]['video_error']."</p>";
-            exit();
+            $errorMessage = "<p style='color:red;text-align:center;'>Video upload error code: " . $_FILES['videos']['error'][0] . "</p>";
         }
     }
 
-    if ($editMode) {
-        // UPDATE existing record
-        $sql = "UPDATE houses SET name=?, title=?, price=?, phone=?, location=?, image=?, video=? WHERE id=?";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssissssi", $name, $title, $price, $phone, $location, $images, $video, $id);
-    } else {
-        // INSERT new record
-        $userId = $_SESSION['user_id'];
-        $sql = "INSERT INTO houses (name, title, price, phone, location, image, video, user_id) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("ssissssi", $name, $title, $price, $phone, $location, $images, $video, $userId);
-    }
+    if (empty($errorMessage)) {
+        if ($editMode) {
+            $sql = "UPDATE houses SET name=?, title=?, price=?, phone=?, location=?, image=?, video=? WHERE id=?";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ssissssi", $name, $title, $price, $phone, $location, $images, $video, $id);
+        } else {
+            $userId = $_SESSION['user_id'];
+            $sql = "INSERT INTO houses (name, title, price, phone, location, image, video, user_id) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param("ssissssi", $name, $title, $price, $phone, $location, $images, $video, $userId);
+        }
 
-    if ($stmt->execute()) {
-        header("Location: browse.php?msg=success");
-        exit();
-    } else {
-        echo "Error: " . $conn->error;
+        if ($stmt->execute()) {
+            header("Location: browse.php?msg=success");
+            exit();
+        } else {
+            $errorMessage = "<p style='color:red;text-align:center;'>Database error: " . htmlspecialchars($stmt->error) . "</p>";
+        }
     }
 }
 ?>
@@ -92,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="<?= $lang ?>">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $editMode ? $translations[$lang]['edit_house'] : $translations[$lang]['post_house'] ?> - HouseHubKe</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -142,6 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <main>
         <div class="form-container">
             <h2><?= $editMode ? $translations[$lang]['edit_listing'] : $translations[$lang]['post_listing'] ?></h2>
+            <?= $errorMessage ?>
             <form action="post.php<?= $editMode ? '?edit='.$id : '' ?>" method="post" enctype="multipart/form-data">
                 <label for="name"><?= $translations[$lang]['poster_name'] ?>:</label>
                 <input type="text" id="name" name="name" value="<?= htmlspecialchars($house['name'] ?? '') ?>" required>
@@ -182,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 <?php endif; ?>
 
-                <label for="videos"><?= $translations[$lang]['upload_video'] ?> (max 1GB):</label>
+                <label for="videos"><?= $translations[$lang]['upload_video'] ?> (max 100MB):</label>
                 <input type="file" id="videos" name="videos[]" accept="video/mp4,video/webm">
                 <?php if ($editMode && !empty($house['video'])): ?>
                     <div class="preview-video">

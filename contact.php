@@ -3,51 +3,58 @@ include('db.php'); // db.php already starts the session and connects to MySQL
 include('lang.php');
 $lang = $_SESSION['language'] ?? 'en';
 
-// Include PHPMailer using relative paths (works on both Windows and Linux/Render)
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-require __DIR__ . '/PHPMailer-7.1.1/src/Exception.php';
-require __DIR__ . '/PHPMailer-7.1.1/src/PHPMailer.php';
-require __DIR__ . '/PHPMailer-7.1.1/src/SMTP.php';
-
 $statusMessage = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $name    = $_POST['name'] ?? '';
-    $email   = $_POST['email'] ?? '';
-    $message = $_POST['message'] ?? '';
+    $name    = trim($_POST['name'] ?? '');
+    $email   = trim($_POST['email'] ?? '');
+    $message = trim($_POST['message'] ?? '');
 
     if (!empty($name) && !empty($email) && !empty($message)) {
-        $mail = new PHPMailer(true);
-        try {
-            // SMTP settings
-            $mail->isSMTP();
-            $mail->Host       = 'smtp.gmail.com';
-            $mail->SMTPAuth   = true;
-            $mail->Username   = 'househubke254@gmail.com';
-            $mail->Password   = getenv('SMTP_PASS') ?: 'ucfj btvy ysga duqc';
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port       = 587;
+        $brevoApiKey = getenv('BREVO_API_KEY') ?: ($_ENV['BREVO_API_KEY'] ?? ($_SERVER['BREVO_API_KEY'] ?? ''));
 
-            // Email content
-            $mail->setFrom('househubke254@gmail.com', 'HouseHubKe Contact Form');
-            $mail->addAddress('househubke254@gmail.com');
-            $mail->addReplyTo($email, $name);
-            $mail->Subject = 'New Contact Us Message';
-            $mail->Body    = "Name: $name\nEmail: $email\n\nMessage:\n$message";
+        if (empty($brevoApiKey)) {
+            $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Server error: BREVO_API_KEY is missing in Render Environment.</p>";
+        } else {
+            // Built with implode so copy-paste tools never strip the domain name
+            $host = implode('.', ['api', 'brevo', 'com']);
+            $apiUrl = 'https://' . $host . '/v3/smtp/email';
 
-            $mail->send();
+            $payload = json_encode([
+                'sender'      => ['name' => 'HouseHubKe Contact Form', 'email' => 'briantechwizard.ke@gmail.com'],
+                'to'          => [['email' => 'househubke254@gmail.com', 'name' => 'HouseHubKe Admin']],
+                'replyTo'     => ['email' => $email, 'name' => $name],
+                'subject'     => 'New Contact Us Message from ' . $name,
+                'textContent' => "Name: $name\nEmail: $email\n\nMessage:\n$message"
+            ]);
 
-            // Save to database
-            $stmt = $conn->prepare("INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)");
-            $stmt->bind_param("sss", $name, $email, $message);
-            $stmt->execute();
-            $stmt->close();
+            $ch = curl_init($apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'accept: application/json',
+                'api-key: ' . trim($brevoApiKey),
+                'content-type: application/json'
+            ]);
 
-            $statusMessage = "<p style='color:green;text-align:center;margin-bottom:15px;'>Your message has been sent successfully!</p>";
-        } catch (Exception $e) {
-            $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Failed to send message: {$mail->ErrorInfo}</p>";
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr  = curl_error($ch);
+            curl_close($ch);
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                // Save message to Aiven MySQL database
+                $stmt = $conn->prepare("INSERT INTO contact_messages (name, email, message) VALUES (?, ?, ?)");
+                $stmt->bind_param("sss", $name, $email, $message);
+                $stmt->execute();
+                $stmt->close();
+
+                $statusMessage = "<p style='color:green;text-align:center;margin-bottom:15px;'>Your message has been sent successfully!</p>";
+            } else {
+                $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Failed to send message ($httpCode): " . htmlspecialchars($curlErr ?: $response) . "</p>";
+            }
         }
     } else {
         $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Please fill in all fields.</p>";

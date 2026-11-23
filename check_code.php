@@ -4,9 +4,13 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $code = $_POST['code'];
+    $code = trim($_POST['code'] ?? '');
+    $savedCode = trim((string)($_SESSION['reset_code'] ?? ''));
 
-    if (isset($_SESSION['reset_code']) && $code == $_SESSION['reset_code']) {
+    if (empty($savedCode)) {
+        echo "<p style='color:red;text-align:center;'>Session expired. Please request a new verification code.</p>";
+        echo "<p style='text-align:center;'><a href='forgot_password.php'>Request New Code</a></p>";
+    } elseif ($code === $savedCode) {
         header("Location: reset_password.php");
         exit();
     } else {

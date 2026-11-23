@@ -27,7 +27,8 @@ $lang = $_SESSION['language'] ?? 'en';
             <p><?= $translations[$lang]['email'] ?>: 
                 <a href="mailto:househubke254@gmail.com">househubke254@gmail.com</a>
                 <a href="https://wa.me/254115024238" class="whatsapp-link">
-                    <img src="/househub/images/whatsapp.png" alt="whatsapp" class="whatsapp">
+                    <img src="images/whatsapp.png" alt="whatsapp" class="whatsapp">
+
 
                 </a>
             </p>

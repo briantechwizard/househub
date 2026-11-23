@@ -23,7 +23,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         if (empty($brevoApiKey)) {
             echo "<p style='color:red;text-align:center;'>Server configuration error: BREVO_API_KEY is missing in Render Environment.</p>";
         } else {
-            $apiUrl = 'https://' . '://brevo.com' . '/v3/smtp/email';
+            // Built with implode so copy-paste tools never strip the domain name
+            $host = implode('.', ['api', 'brevo', 'com']);
+            $apiUrl = 'https://' . $host . '/v3/smtp/email';
 
             $payload = json_encode([
                 'sender' => ['name' => 'HouseHubKe', 'email' => 'househubke254@gmail.com'],

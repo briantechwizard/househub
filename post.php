@@ -12,7 +12,7 @@ if (!isset($_SESSION['user_id'])) {
 $editMode = false;
 $house = null;
 $id = null;
-$errorMessage = '';
+$toastError = '';
 
 // Check if editing
 if (isset($_GET['edit'])) {
@@ -33,7 +33,7 @@ if (isset($_GET['edit'])) {
 
 // Detect if POST exceeded server limit (empty $_POST when Content-Length > 0)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
-    $errorMessage = "<p style='color:red;text-align:center;'>Uploaded files are too large. Maximum total upload size is 100MB.</p>";
+    $toastError = "File size limit exceeded! Please upload files under 100MB.";
 } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $name     = trim($_POST['name'] ?? '');
     $title    = trim($_POST['title'] ?? '');
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
     }
     $images = !empty($imagePaths) ? implode(',', $imagePaths) : ($house['image'] ?? "");
 
-    // Handle video upload (max 100MB on Render)
+    // Handle video upload (max 100MB)
     $video = $house['video'] ?? "";
     if (!empty($_FILES['videos']['name'][0])) {
         if ($_FILES['videos']['error'][0] === UPLOAD_ERR_OK) {
@@ -74,14 +74,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
                     $video = $targetDir . $uniqueVideo;
                 }
             } else {
-                $errorMessage = "<p style='color:red;text-align:center;'>Video exceeds 100MB limit.</p>";
+                $toastError = "Video is too large! Please upload a video smaller than 100MB.";
             }
+        } elseif ($_FILES['videos']['error'][0] === UPLOAD_ERR_INI_SIZE || $_FILES['videos']['error'][0] === UPLOAD_ERR_FORM_SIZE) {
+            $toastError = "File exceeds the 100MB upload limit. Please choose a smaller file.";
         } else {
-            $errorMessage = "<p style='color:red;text-align:center;'>Video upload error code: " . $_FILES['videos']['error'][0] . "</p>";
+            $toastError = "Video upload error (Code: " . $_FILES['videos']['error'][0] . ").";
         }
     }
 
-    if (empty($errorMessage)) {
+    if (empty($toastError)) {
         if ($editMode) {
             $sql = "UPDATE houses SET name=?, title=?, price=?, phone=?, location=?, image=?, video=? WHERE id=?";
             $stmt = $conn->prepare($sql);
@@ -98,7 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             header("Location: browse.php?msg=success");
             exit();
         } else {
-            $errorMessage = "<p style='color:red;text-align:center;'>Database error: " . htmlspecialchars($stmt->error) . "</p>";
+            $toastError = "Database error: " . $stmt->error;
         }
     }
 }
@@ -151,6 +153,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             color: #FFD700;
             box-shadow: 0 0 15px #FFD700;
         }
+        /* Toast Notification Styling */
+        #toast-alert {
+            visibility: hidden;
+            min-width: 280px;
+            max-width: 90%;
+            background-color: #111;
+            color: #FFD700;
+            border: 2px solid #ff4d4d;
+            text-align: center;
+            border-radius: 10px;
+            padding: 16px 22px;
+            position: fixed;
+            z-index: 9999;
+            left: 50%;
+            bottom: 30px;
+            transform: translateX(-50%);
+            font-size: 15px;
+            font-weight: bold;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.7);
+            opacity: 0;
+            transition: opacity 0.3s ease, bottom 0.3s ease;
+        }
+        #toast-alert.show {
+            visibility: visible;
+            opacity: 1;
+            bottom: 45px;
+        }
     </style>
 </head>
 <body>
@@ -158,8 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
     <main>
         <div class="form-container">
             <h2><?= $editMode ? $translations[$lang]['edit_listing'] : $translations[$lang]['post_listing'] ?></h2>
-            <?= $errorMessage ?>
-            <form action="post.php<?= $editMode ? '?edit='.$id : '' ?>" method="post" enctype="multipart/form-data">
+            <form id="houseForm" action="post.php<?= $editMode ? '?edit='.$id : '' ?>" method="post" enctype="multipart/form-data">
                 <label for="name"><?= $translations[$lang]['poster_name'] ?>:</label>
                 <input type="text" id="name" name="name" value="<?= htmlspecialchars($house['name'] ?? '') ?>" required>
 
@@ -174,6 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
                     <option <?= ($house['title'] ?? '')=='5 Bedroom'?'selected':'' ?>>5 Bedroom</option>
                     <option <?= ($house['title'] ?? '')=='Mansion'?'selected':'' ?>>Mansion</option>
                 </select>
+
                 <label for="price"><?= $translations[$lang]['price'] ?> (KSh):</label>
                 <input type="text" id="price" name="price" value="<?= htmlspecialchars($house['price'] ?? '') ?>" required>
 
@@ -214,6 +243,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             </form>
         </div>
     </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-alert"></div>
+
     <?php include('footer.php'); ?>
+
+    <script>
+        const MAX_SIZE = 100 * 1024 * 1024; // 100MB in bytes
+
+        function showToast(message) {
+            const toast = document.getElementById("toast-alert");
+            toast.textContent = "⚠️ " + message;
+            toast.classList.add("show");
+            setTimeout(() => {
+                toast.classList.remove("show");
+            }, 4500);
+        }
+
+        function checkTotalFileSize() {
+            const photos = document.getElementById("photos").files;
+            const videos = document.getElementById("videos").files;
+            let totalSize = 0;
+
+            for (let i = 0; i < photos.length; i++) totalSize += photos[i].size;
+            for (let i = 0; i < videos.length; i++) totalSize += videos[i].size;
+
+            if (totalSize > MAX_SIZE) {
+                const sizeMB = (totalSize / (1024 * 1024)).toFixed(1);
+                showToast(`Selected files (${sizeMB}MB) exceed the 100MB limit. Please upload files smaller than 100MB.`);
+                return false;
+            }
+            return true;
+        }
+
+        // Check immediately when user selects photos or video
+        document.getElementById("photos").addEventListener("change", function() {
+            if (!checkTotalFileSize()) this.value = "";
+        });
+
+        document.getElementById("videos").addEventListener("change", function() {
+            if (!checkTotalFileSize()) this.value = "";
+        });
+
+        // Double-check before submitting form
+        document.getElementById("houseForm").addEventListener("submit", function(e) {
+            if (!checkTotalFileSize()) {
+                e.preventDefault();
+            }
+        });
+
+        // Show server-side error toast if PHP caught an issue
+        <?php if (!empty($toastError)): ?>
+            window.addEventListener("DOMContentLoaded", () => {
+                showToast(<?= json_encode($toastError) ?>);
+            });
+        <?php endif; ?>
+    </script>
 </body>
 </html>

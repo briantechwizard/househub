@@ -1,10 +1,15 @@
 <?php
+// Load local Aiven credentials if running on your PC (ignored by Git)
+if (file_exists(__DIR__ . '/db_local.php')) {
+    include(__DIR__ . '/db_local.php');
+}
+
 // Start session for login system
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Use Render environment variables if available, otherwise fall back to local XAMPP
+// Use Render environment variables (or db_local.php) if available, otherwise fall back to local XAMPP
 $host     = getenv('DB_HOST') ?: "localhost";
 $port     = (int)(getenv('DB_PORT') ?: 3306);
 $user     = getenv('DB_USER') ?: "root";
@@ -15,7 +20,7 @@ $database = getenv('DB_NAME') ?: "househubke254";
 $conn = mysqli_init();
 
 if (getenv('DB_HOST')) {
-    // Enable SSL for Aiven Cloud MySQL on Render
+    // Enable SSL for Aiven Cloud MySQL on Render & local Admin
     mysqli_ssl_set($conn, NULL, NULL, NULL, NULL, NULL);
     $connected = mysqli_real_connect($conn, $host, $user, $password, $database, $port, NULL, MYSQLI_CLIENT_SSL);
 } else {

@@ -26,11 +26,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION['reset_email'] = $email;
         $_SESSION['reset_code'] = $code;
 
-        $brevoApiKey = getenv('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');
+        // Read BREVO_API_KEY from all possible PHP/Apache sources
+        $brevoApiKey = getenv('BREVO_API_KEY') ?: ($_ENV['BREVO_API_KEY'] ?? ($_SERVER['BREVO_API_KEY'] ?? ''));
         $emailSent = false;
         $errorMsg = '';
 
-        if ($brevoApiKey) {
+        if (!empty($brevoApiKey)) {
             // Fast HTTPS API send via Brevo (works on Render without SMTP port blocks)
             $payload = json_encode([
                 'sender' => ['name' => 'HouseHubKe', 'email' => 'househubke254@gmail.com'],
@@ -46,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_TIMEOUT, 10);
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'accept: application/json',
-                'api-key: ' . $brevoApiKey,
+                'api-key: ' . trim($brevoApiKey),
                 'content-type: application/json'
             ]);
 

@@ -4,18 +4,27 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Database connection settings (default localhost)
-$host     = "localhost";     // usually localhost
-$user     = "root";          // default MySQL username in XAMPP
-$password = "";              // default MySQL password (empty in XAMPP)
-$database = "househubke254"; // your database name
+// Use Render environment variables if available, otherwise fall back to local XAMPP
+$host     = getenv('DB_HOST') ?: "localhost";
+$port     = (int)(getenv('DB_PORT') ?: 3306);
+$user     = getenv('DB_USER') ?: "root";
+$password = getenv('DB_PASS') !== false ? getenv('DB_PASS') : "";
+$database = getenv('DB_NAME') ?: "househubke254";
 
-// Create connection
-$conn = new mysqli($host, $user, $password, $database);
+// Initialize MySQLi
+$conn = mysqli_init();
+
+if (getenv('DB_HOST')) {
+    // Enable SSL for Aiven Cloud MySQL on Render
+    mysqli_ssl_set($conn, NULL, NULL, NULL, NULL, NULL);
+    $connected = mysqli_real_connect($conn, $host, $user, $password, $database, $port, NULL, MYSQLI_CLIENT_SSL);
+} else {
+    // Standard connection for local XAMPP
+    $connected = mysqli_real_connect($conn, $host, $user, $password, $database, $port);
+}
 
 // Check connection
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+if (!$connected) {
+    die("Connection failed: " . mysqli_connect_error());
 }
 ?>
-

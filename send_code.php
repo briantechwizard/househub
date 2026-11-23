@@ -26,7 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION['reset_email'] = $email;
         $_SESSION['reset_code'] = $code;
 
-        $brevoApiKey = getenv('BREVO_API_KEY');
+        $brevoApiKey = getenv('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');
         $emailSent = false;
         $errorMsg = '';
 

@@ -31,6 +31,60 @@ if (isset($_GET['edit'])) {
     }
 }
 
+// Helper function to upload image or video to Cloudinary permanently
+function uploadToCloudinary($tmpPath, $originalName, $mimeType, $resourceType = 'image') {
+    $cloudName = getenv('CLOUDINARY_CLOUD_NAME') ?: ($_ENV['CLOUDINARY_CLOUD_NAME'] ?? ($_SERVER['CLOUDINARY_CLOUD_NAME'] ?? ''));
+    $apiKey    = getenv('CLOUDINARY_API_KEY')    ?: ($_ENV['CLOUDINARY_API_KEY']    ?? ($_SERVER['CLOUDINARY_API_KEY']    ?? ''));
+    $apiSecret = getenv('CLOUDINARY_API_SECRET') ?: ($_ENV['CLOUDINARY_API_SECRET'] ?? ($_SERVER['CLOUDINARY_API_SECRET'] ?? ''));
+
+    $cloudName = trim($cloudName);
+    $apiKey    = trim($apiKey);
+    $apiSecret = trim($apiSecret);
+
+    if (empty($cloudName) || empty($apiKey) || empty($apiSecret)) {
+        return ['error' => 'Cloudinary environment variables are missing on the server.'];
+    }
+
+    $timestamp = time();
+    $folder = 'househubke';
+    // Cloudinary signature requires parameters sorted alphabetically
+    $paramsToSign = "folder={$folder}&timestamp={$timestamp}" . $apiSecret;
+    $signature = sha1($paramsToSign);
+
+    $host = implode('.', ['api', 'cloudinary', 'com']);
+    $url  = "https://{$host}/v1_1/{$cloudName}/{$resourceType}/upload";
+
+    $postFields = [
+        'file'      => new CURLFile($tmpPath, $mimeType ?: 'application/octet-stream', basename($originalName)),
+        'api_key'   => $apiKey,
+        'timestamp' => $timestamp,
+        'folder'    => $folder,
+        'signature' => $signature
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 120);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr  = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode >= 200 && $httpCode < 300) {
+        $data = json_decode($response, true);
+        if (!empty($data['secure_url'])) {
+            return ['url' => $data['secure_url']];
+        }
+    }
+
+    $errData = json_decode($response, true);
+    $msg = $errData['error']['message'] ?? ($curlErr ?: 'Cloudinary upload failed');
+    return ['error' => $msg];
+}
+
 // Detect if POST exceeded server limit (empty $_POST when Content-Length > 0)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
     $toastError = "File size limit exceeded! Please upload files under 100MB.";
@@ -41,37 +95,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
     $phone    = trim($_POST['phone'] ?? '');
     $location = trim($_POST['location'] ?? '');
 
-    $targetDir = "uploads/";
-    $fullUploadDir = __DIR__ . "/uploads/";
-    if (!is_dir($fullUploadDir)) {
-        mkdir($fullUploadDir, 0775, true);
-    }
-
-    // Handle multiple image uploads
+    // Handle multiple image uploads to Cloudinary
     $imagePaths = [];
     if (!empty($_FILES['photos']['name'][0])) {
         foreach ($_FILES['photos']['name'] as $key => $filename) {
-            if (!empty($filename) && $_FILES['photos']['error'][$key] === UPLOAD_ERR_OK) {
-                $cleanName = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($filename));
-                $uniqueName = time() . "_" . $key . "_" . $cleanName;
-                if (move_uploaded_file($_FILES['photos']['tmp_name'][$key], $fullUploadDir . $uniqueName)) {
-                    $imagePaths[] = $targetDir . $uniqueName;
+            if (!empty($filename)) {
+                if ($_FILES['photos']['error'][$key] === UPLOAD_ERR_OK) {
+                    $tmpPath  = $_FILES['photos']['tmp_name'][$key];
+                    $mimeType = $_FILES['photos']['type'][$key] ?? 'image/jpeg';
+                    $uploadRes = uploadToCloudinary($tmpPath, $filename, $mimeType, 'image');
+                    if (isset($uploadRes['url'])) {
+                        $imagePaths[] = $uploadRes['url'];
+                    } else {
+                        $toastError = "Photo upload failed: " . $uploadRes['error'];
+                        break;
+                    }
+                } else {
+                    $toastError = "Photo upload error (Code: " . $_FILES['photos']['error'][$key] . ").";
+                    break;
                 }
             }
         }
     }
     $images = !empty($imagePaths) ? implode(',', $imagePaths) : ($house['image'] ?? "");
 
-    // Handle video upload (max 100MB)
+    // Handle video upload to Cloudinary (max 100MB)
     $video = $house['video'] ?? "";
-    if (!empty($_FILES['videos']['name'][0])) {
+    if (empty($toastError) && !empty($_FILES['videos']['name'][0])) {
         if ($_FILES['videos']['error'][0] === UPLOAD_ERR_OK) {
             $videoSize = $_FILES['videos']['size'][0];
             if ($videoSize <= 100 * 1024 * 1024) {
-                $cleanVid = preg_replace('/[^A-Za-z0-9._-]/', '_', basename($_FILES['videos']['name'][0]));
-                $uniqueVideo = time() . "_" . $cleanVid;
-                if (move_uploaded_file($_FILES['videos']['tmp_name'][0], $fullUploadDir . $uniqueVideo)) {
-                    $video = $targetDir . $uniqueVideo;
+                $tmpVidPath = $_FILES['videos']['tmp_name'][0];
+                $vidName    = $_FILES['videos']['name'][0];
+                $vidMime    = $_FILES['videos']['type'][0] ?? 'video/mp4';
+                $vidRes     = uploadToCloudinary($tmpVidPath, $vidName, $vidMime, 'video');
+                if (isset($vidRes['url'])) {
+                    $video = $vidRes['url'];
+                } else {
+                    $toastError = "Video upload failed: " . $vidRes['error'];
                 }
             } else {
                 $toastError = "Video is too large! Please upload a video smaller than 100MB.";
@@ -239,7 +300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
                     </div>
                 <?php endif; ?>
 
-                <button type="submit"><?= $editMode ? $translations[$lang]['update_house'] : $translations[$lang]['post_house_btn'] ?></button>
+                <button type="submit" id="submitBtn"><?= $editMode ? $translations[$lang]['update_house'] : $translations[$lang]['post_house_btn'] ?></button>
             </form>
         </div>
     </main>
@@ -258,7 +319,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             toast.classList.add("show");
             setTimeout(() => {
                 toast.classList.remove("show");
-            }, 4500);
+            }, 5000);
         }
 
         function checkTotalFileSize() {
@@ -286,10 +347,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             if (!checkTotalFileSize()) this.value = "";
         });
 
-        // Double-check before submitting form
+        // Double-check before submitting form & show uploading feedback
         document.getElementById("houseForm").addEventListener("submit", function(e) {
             if (!checkTotalFileSize()) {
                 e.preventDefault();
+            } else {
+                const btn = document.getElementById("submitBtn");
+                btn.textContent = "Uploading media... Please wait";
+                btn.style.opacity = "0.7";
             }
         });
 

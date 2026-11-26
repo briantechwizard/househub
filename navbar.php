@@ -3,6 +3,15 @@
 include('lang.php');
 $lang = $_SESSION['language'] ?? 'en';
 ?>
+<script>
+// Ensure mobile viewport meta tag is present in <head> on every page
+if (!document.querySelector('meta[name="viewport"]')) {
+    const meta = document.createElement('meta');
+    meta.name = 'viewport';
+    meta.content = 'width=device-width, initial-scale=1.0';
+    document.head.appendChild(meta);
+}
+</script>
 
 <nav>
     <div class="nav-left">

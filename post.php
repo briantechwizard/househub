@@ -241,6 +241,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST) && ($_SERVER['CONTENT
             opacity: 1;
             bottom: 45px;
         }
+		
+		/* Compact Edit-Mode Media Previews */
+.preview-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 10px;
+}
+.preview-gallery img {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid #FFD700;
+}
+.preview-video {
+    margin-top: 10px;
+}
+.preview-video video {
+    width: 220px;
+    max-width: 100%;
+    height: 140px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 2px solid #FFD700;
+}
+
     </style>
 </head>
 <body>

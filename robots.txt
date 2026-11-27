@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://househub-brk7.onrender.com/sitemap.xml

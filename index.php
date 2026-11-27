@@ -1,5 +1,7 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 include('lang.php');
 $lang = $_SESSION['language'] ?? 'en';
 ?>
@@ -7,20 +9,35 @@ $lang = $_SESSION['language'] ?? 'en';
 <html lang="<?= $lang ?>">
 <head>
     <meta charset="UTF-8">
-    <title>HouseHubKe - Home</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="google-site-verification" content="CSUmHWeKQwmXKRrVCeKLz0Clr7O7lLT702TQluko9-0" />
+    <title>HouseHubKe - Find Bedsitters, Apartments & Houses for Rent in Kenya</title>
+    <meta name="description" content="HouseHubKe helps tenants and landlords across Nairobi and Kenya find, list, and rent bedsitters, 1-4 bedroom apartments, and mansions easily.">
+    <meta name="keywords" content="HouseHubKe, houses for rent in Kenya, Nairobi apartments, bedsitters in Nairobi, rent house Kenya, HouseHub">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://onrender.com">
+
+    <!-- Social Media / WhatsApp Link Preview Tags -->
+    <meta property="og:title" content="HouseHubKe - Find Houses & Apartments for Rent in Kenya">
+    <meta property="og:description" content="Browse verified bedsitters, 1-4 bedroom apartments, and mansions across Nairobi and Kenya on HouseHubKe.">
+    <meta property="og:url" content="https://onrender.com">
+    <meta property="og:type" content="website">
+
     <link rel="stylesheet" href="style.css">
     <script>
         // Simple scroll reveal for .info section
         document.addEventListener("DOMContentLoaded", () => {
             const infoSection = document.querySelector(".info");
-            const observer = new IntersectionObserver(entries => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        infoSection.classList.add("visible");
-                    }
+            if (infoSection) {
+                const observer = new IntersectionObserver(entries => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            infoSection.classList.add("visible");
+                        }
+                    });
                 });
-            });
-            observer.observe(infoSection);
+                observer.observe(infoSection);
+            }
 
             // Toast notification example
             const toast = document.getElementById("toast");

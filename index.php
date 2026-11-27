@@ -15,12 +15,12 @@ $lang = $_SESSION['language'] ?? 'en';
     <meta name="description" content="HouseHubKe helps tenants and landlords across Nairobi and Kenya find, list, and rent bedsitters, 1-4 bedroom apartments, and mansions easily.">
     <meta name="keywords" content="HouseHubKe, houses for rent in Kenya, Nairobi apartments, bedsitters in Nairobi, rent house Kenya, HouseHub">
     <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://onrender.com">
+    <link rel="canonical" href="https://househub-brk7.onrender.com/">
 
     <!-- Social Media / WhatsApp Link Preview Tags -->
     <meta property="og:title" content="HouseHubKe - Find Houses & Apartments for Rent in Kenya">
     <meta property="og:description" content="Browse verified bedsitters, 1-4 bedroom apartments, and mansions across Nairobi and Kenya on HouseHubKe.">
-    <meta property="og:url" content="https://onrender.com">
+    <meta property="og:url" content="https://househub-brk7.onrender.com/">
     <meta property="og:type" content="website">
 
     <link rel="stylesheet" href="style.css">

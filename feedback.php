@@ -1,50 +1,60 @@
 <?php
-include('db.php');
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+include('db.php'); // db.php already starts the session safely
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/Exception.php';
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/PHPMailer.php';
-require 'C:/xampp/htdocs/househub/PHPMailer-7.1.1/src/SMTP.php';
+$statusMessage = '';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $userEmail = $_POST['email'] ?? '';
-    $feedback  = $_POST['feedback'] ?? '';
+    $userEmail = trim($_POST['email'] ?? '');
+    $feedback  = trim($_POST['feedback'] ?? '');
 
     if (!empty($userEmail) && !empty($feedback)) {
-        // 1. Send email
-        $mail = new PHPMailer(true);
-        try {
-            $mail->isSMTP();
-            $mail->Host = 'smtp.gmail.com'; 
-            $mail->SMTPAuth = true;
-            $mail->Username = 'househubke254@gmail.com'; // your site Gmail
-            $mail->Password = 'ucfj btvy ysga duqc';       // Gmail App Password
-            $mail->SMTPSecure = 'tls';
-            $mail->Port = 587;
+        $brevoApiKey = getenv('BREVO_API_KEY') ?: ($_ENV['BREVO_API_KEY'] ?? ($_SERVER['BREVO_API_KEY'] ?? ''));
 
-            $mail->setFrom('househubke254@gmail.com', 'HouseHubKe Feedback');
-            $mail->addAddress('househubke254@gmail.com'); // site inbox
-            $mail->addReplyTo($userEmail, 'Feedback User'); // reply directly to sender
-            $mail->Subject = 'New Feedback Submission';
-            $mail->Body    = "Feedback from: $userEmail\n\nMessage:\n$feedback";
+        if (empty($brevoApiKey)) {
+            $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Server error: BREVO_API_KEY is missing in Render Environment.</p>";
+        } else {
+            // Built with implode so copy-paste never strips the domain
+            $host = implode('.', ['api', 'brevo', 'com']);
+            $apiUrl = 'https://' . $host . '/v3/smtp/email';
 
-            $mail->send();
+            $payload = json_encode([
+                'sender'      => ['name' => 'HouseHubKe Feedback', 'email' => 'briantechwizard.ke@gmail.com'],
+                'to'          => [['email' => 'househubke254@gmail.com', 'name' => 'HouseHubKe Admin']],
+                'replyTo'     => ['email' => $userEmail, 'name' => 'Feedback User'],
+                'subject'     => 'New Feedback Submission',
+                'textContent' => "Feedback from: $userEmail\n\nMessage:\n$feedback"
+            ]);
 
-            // 2. Save to database
-            $stmt = $conn->prepare("INSERT INTO feedback_messages (email, message) VALUES (?, ?)");
-            $stmt->bind_param("ss", $userEmail, $feedback);
-            $stmt->execute();
-            $stmt->close();
+            $ch = curl_init($apiUrl);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'accept: application/json',
+                'api-key: ' . trim($brevoApiKey),
+                'content-type: application/json'
+            ]);
 
-            echo "<p style='color:green;text-align:center;'>Thank you for your feedback! It has been emailed and saved successfully.</p>";
-        } catch (Exception $e) {
-            echo "<p style='color:red;text-align:center;'>Failed to send feedback: {$mail->ErrorInfo}</p>";
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlErr  = curl_error($ch);
+            curl_close($ch);
+
+            if ($httpCode >= 200 && $httpCode < 300) {
+                // Save to database
+                $stmt = $conn->prepare("INSERT INTO feedback_messages (email, message) VALUES (?, ?)");
+                $stmt->bind_param("ss", $userEmail, $feedback);
+                $stmt->execute();
+                $stmt->close();
+
+                $statusMessage = "<p style='color:green;text-align:center;margin-bottom:15px;'>Thank you for your feedback! It has been emailed and saved successfully.</p>";
+            } else {
+                $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Failed to send feedback ($httpCode): " . htmlspecialchars($curlErr ?: $response) . "</p>";
+            }
         }
     } else {
-        echo "<p style='color:red;text-align:center;'>Please enter both your email and feedback message.</p>";
+        $statusMessage = "<p style='color:red;text-align:center;margin-bottom:15px;'>Please enter both your email and feedback message.</p>";
     }
 }
 ?>
@@ -52,6 +62,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Send Feedback - HouseHubKe</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -104,6 +115,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <main>
     <section class="form-section">
         <h2>Send Feedback</h2>
+        <?= $statusMessage ?>
         <form method="post">
             <label>Your Email</label>
             <input type="email" name="email" placeholder="Enter your email" required>
